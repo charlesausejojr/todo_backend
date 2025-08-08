@@ -10,6 +10,8 @@ from typing import List, Optional
 from fastapi import HTTPException, Depends
 from sqlalchemy.orm import Session
 
+from fastapi.middleware.cors import CORSMiddleware
+
 # Create a database connection
 DATABASE_URL = "sqlite:///./todos.db"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
@@ -52,6 +54,14 @@ class Todo(BaseModel):
 # Create our app instance - like opening a restaurant
 app = FastAPI(title="Todo API", version="1.0.0")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],        # * means "allow requests from anywhere"
+    allow_credentials=True,     # Allow cookies and auth headers
+    allow_methods=["*"],        # Allow all HTTP methods (GET, POST, PUT, DELETE)
+    allow_headers=["*"],        # Allow all headers
+)
+
 def get_db():
     db = SessionLocal()
     try:
@@ -89,7 +99,34 @@ def create_todo(todo: TodoCreate, db: Session = Depends(get_db)):
     db.refresh(db_todo)    
     return db_todo
 
+@app.put("/todos/{todo_id}", response_model=Todo)
+def update_todo(todo_id: int, todo_update: TodoUpdate, db: Session = Depends(get_db)):
+    todo = db.query(TodoDB).filter(TodoDB.id == todo_id).first()
+    if not todo:
+        raise HTTPException(status_code=404, detail="Todo not found")
+    
+    if todo_update.title is not None:
+        todo.title = todo_update.title
+    if todo_update.description is not None:
+        todo.description = todo_update.description
+    if todo_update.completed is not None:
+        todo.completed = todo_update.completed
+    
+    db.commit()
+    db.refresh(todo)
+    return todo
 
+@app.delete("/todos/{todo_id}")
+def delete_todo(todo_id: int, db: Session = Depends(get_db)):
+    todo = db.query(TodoDB).filter(TodoDB.id == todo_id).first()
+    if not todo:
+        raise HTTPException(status_code=404, detail="Todo not found")
+    
+    db.delete(todo)
+    db.commit()
+    return {"message": "Todo deleted successfully"}
 
-
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}
 
